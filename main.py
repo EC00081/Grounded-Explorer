@@ -25,7 +25,7 @@ class ResearchSynthesisRequest(BaseModel):
     prompt: str
     topic: str = "Research Deliverable"
 
-# Pure, Unbiased Background Loop (No hardcoded themes)
+# Pure Telemetry Background Loop (Strictly system state metrics, no hardcoded thoughts)
 async def multi_agent_world_loop():
     await asyncio.sleep(20)
     while True:
@@ -52,14 +52,14 @@ async def multi_agent_world_loop():
                         new_energy = max(0, energy - random.randint(1, 3))
                         new_load = min(100, load + random.randint(-2, 2))
                     
-                    # Generates neutral status based strictly on system state
+                    # Generates neutral status based strictly on system telemetry
                     prompt = (
                         f"You are {name}, operating with the role '{role}' in an autonomous telemetry fleet. "
                         f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
                         f"Write a concise, 1-sentence factual status update reflecting your system telemetry and operational readiness."
                     )
                     
-                    ai_response = genai.Client().models.generate_content(
+                    ai_response = gemini_client.models.generate_content(
                         model='gemini-3.8-flash',
                         contents=prompt,
                     )
@@ -107,7 +107,7 @@ def interact_with_fleet(payload: UserMessage):
             f"A user named {payload.user_name} communicates: '{payload.message}'. "
             f"Respond directly, objectively, and strictly based on the user's prompt without making assumptions."
         )
-        ai_response = genai.Client().models.generate_content(
+        ai_response = gemini_client.models.generate_content(
             model='gemini-3.8-flash',
             contents=prompt,
         )
@@ -133,7 +133,7 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
             f"strictly using the user notes provided below for '{payload.topic}':\n\n{payload.prompt}\n\n"
             f"Do not extrapolate or invent external details. Format in clean Markdown."
         )
-        ai_response = genai.Client().models.generate_content(
+        ai_response = gemini_client.models.generate_content(
             model='gemini-3.8-flash',
             contents=synthesis_prompt,
         )
@@ -187,7 +187,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>Multi-Agent Fleet Habitat <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Autonomous Telemetry Ecosystem (12 Min Cadence)</p>
+            <p style="color: #94a3b8; margin-top: 0;">Autonomous Telemetry Ecosystem</p>
             
             <div id="agent-grid" class="agent-grid">
                 Loading fleet telemetry...
@@ -235,7 +235,7 @@ def read_root():
                                 <div class="metric-row"><span>Energy:</span> <strong>${agent.system_energy}%</strong></div>
                                 <div class="metric-row"><span>Load:</span> <strong>${agent.operational_load}%</strong></div>
                                 <div class="metric-row"><span>Curiosity:</span> <strong>${agent.curiosity_level}%</strong></div>
-                                <div class="thought-box">"${agent.current_status}"</div>
+                                <div class="thought-box">"${agent.current_status || 'Standby telemetry nominal.'}"</div>
                             </div>
                         `;
                     });
@@ -274,7 +274,7 @@ def read_root():
                     body: JSON.stringify({ message: input.value, user_name: 'Liam' })
                 });
                 const data = await res.json();
-                replyEl.innerText = "Response: " + data.reply;
+                replyEl.innerText = "Response: " + (data.reply || data.detail || "No reply returned");
                 input.value = '';
                 fetchStatus();
             } catch(e) {
@@ -304,7 +304,7 @@ def read_root():
                 });
                 const data = await res.json();
                 resultEl.style.color = "#34d399";
-                resultEl.innerText = "SUCCESS:\\n\\n" + data.synthesized_content;
+                resultEl.innerText = "SUCCESS:\\n\\n" + (data.synthesized_content || data.detail || "Synthesized.");
                 topicInput.value = '';
                 promptInput.value = '';
                 fetchStatus();
