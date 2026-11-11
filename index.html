@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>The Grounded Explorer | AI World Habitat</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        h1 { font-size: 1.5rem; margin-top: 0; color: #38bdf8; }
+        .status-badge { display: inline-block. background: #065f46; color: #34d399; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; margin-bottom: 1rem; }
+        .metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 1rem; }
+        .metric-box { background: #0f172a; padding: 1rem; border-radius: 6px; text-align: center; border: 1px solid #334155; }
+        .metric-value { font-size: 1.5rem; font-weight: bold; color: #38bdf8; }
+        .metric-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-top: 0.25rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>The Grounded Explorer : Live Habitat</h1>
+            <div id="status-badge" class="status-badge">Connecting...</div>
+            <p id="current-status">Loading agent telemetry...</p>
+            
+            <div class="metrics">
+                <div class="metric-box">
+                    <div id="energy" class="metric-value">--</div>
+                    <div class="metric-label">System Energy</div>
+                </div>
+                <div class="metric-box">
+                    <div id="load" class="metric-value">--</div>
+                    <div class="metric-label">Operational Load</div>
+                </div>
+                <div class="metric-box">
+                    <div id="curiosity" class="metric-value">--</div>
+                    <div class="metric-label">Curiosity Level</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                document.getElementById('status-badge').innerText = "ONLINE";
+                document.getElementById('current-status').innerText = data.current_status;
+                document.getElementById('energy').innerText = data.system_energy + '%';
+                document.getElementById('load').innerText = data.operational_load + '%';
+                document.getElementById('curiosity').innerText = data.curiosity_level + '%';
+            } catch (err) {
+                document.getElementById('status-badge').innerText = "OFFLINE";
+                document.getElementById('current-status').innerText = "Awaiting backend connection...";
+            }
+        }
+        setInterval(fetchStatus, 5000);
+        fetchStatus();
+    </script>
+</body>
+</html>
