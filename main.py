@@ -23,9 +23,9 @@ class UserMessage(BaseModel):
 
 class ResearchSynthesisRequest(BaseModel):
     prompt: str
-    topic: str = "Grand Season Macroeconomic & Vicentus Research"
+    topic: str = "Research Deliverable"
 
-# Autonomous Multi-Agent Background Loop (12-minute cadence)
+# Pure, Unbiased Background Loop (No hardcoded themes)
 async def multi_agent_world_loop():
     await asyncio.sleep(20)
     while True:
@@ -33,14 +33,6 @@ async def multi_agent_world_loop():
             db = get_supabase()
             response = db.table("agent_fleet_state").select("*").execute()
             if response.data:
-                macro_themes = [
-                    "Analyzing 160-year Grand Season cycle compression (1870–2030) and sovereign debt monetization mechanics.",
-                    "Evaluating the cognitive labor deflation shock vs. physical asset inflation (The Rust Belt of the Mind).",
-                    "Assessing Project Vicentus HIPAA-safe FHIR real-time medication stream interception and cryptographic edge telemetry.",
-                    "Monitoring macroeconomic fiscal dominance, financial repression, and the liquidity architecture."
-                ]
-                current_focus = random.choice(macro_themes)
-                
                 for agent in response.data:
                     name = agent["agent_name"]
                     role = agent["role_designation"]
@@ -56,18 +48,18 @@ async def multi_agent_world_loop():
                         new_energy = max(0, energy - 2)
                         new_load = max(0, load - 20)
                     else:
-                        mode = "ACTIVE SYNERGY"
-                        new_energy = max(0, energy - random.randint(1, 4))
-                        new_load = min(100, load + random.randint(-5, 5))
+                        mode = "ACTIVE MONITORING"
+                        new_energy = max(0, energy - random.randint(1, 3))
+                        new_load = min(100, load + random.randint(-2, 2))
                     
+                    # Generates neutral status based strictly on system state
                     prompt = (
-                        f"You are {name}, operating with the role '{role}' in a 3-agent synergistic ecosystem. "
+                        f"You are {name}, operating with the role '{role}' in an autonomous telemetry fleet. "
                         f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
-                        f"Current Macro Focus: {current_focus}. "
-                        f"Write a concise, 1-sentence immersive status update reflecting your unique analytical perspective on Liam's macro research or Vicentus."
+                        f"Write a concise, 1-sentence factual status update reflecting your system telemetry and operational readiness."
                     )
                     
-                    ai_response = gemini_client.models.generate_content(
+                    ai_response = genai.Client().models.generate_content(
                         model='gemini-3.8-flash',
                         contents=prompt,
                     )
@@ -79,13 +71,6 @@ async def multi_agent_world_loop():
                         "current_status": f"[{mode}] {new_status}",
                         "updated_at": "now()"
                     }).eq("id", agent["id"]).execute()
-                    
-                    db.table("agent_inter_logs").insert({
-                        "source_agent": name,
-                        "target_agent": "FLEET_BROADCAST",
-                        "log_type": "SYN_CYCLE",
-                        "content": f"[{mode}] {new_status}"
-                    }).execute()
                     
         except Exception as e:
             print(f"Error in multi-agent loop: {e}")
@@ -118,11 +103,11 @@ def interact_with_fleet(payload: UserMessage):
     try:
         db = get_supabase()
         prompt = (
-            f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
-            f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
-            f"Respond in character: pragmatic, collaborative, and focused on Liam's macro-economic and medical tech research."
+            f"You are The Grounded Explorer, speaking on behalf of the fleet. "
+            f"A user named {payload.user_name} communicates: '{payload.message}'. "
+            f"Respond directly, objectively, and strictly based on the user's prompt without making assumptions."
         )
-        ai_response = gemini_client.models.generate_content(
+        ai_response = genai.Client().models.generate_content(
             model='gemini-3.8-flash',
             contents=prompt,
         )
@@ -132,7 +117,7 @@ def interact_with_fleet(payload: UserMessage):
             "source_agent": "The Grounded Explorer",
             "target_agent": payload.user_name,
             "log_type": "USER_INTERACTION",
-            "content": f"Visitor {payload.user_name}: '{payload.message}' | Fleet Reply: '{reply}'"
+            "content": f"User {payload.user_name}: '{payload.message}' | Reply: '{reply}'"
         }).execute()
         
         return {"reply": reply}
@@ -144,11 +129,11 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
     try:
         db = get_supabase()
         synthesis_prompt = (
-            f"You are The Log Archivist and Research Synthesizer. Synthesize a formal, structured executive research brief "
-            f"based on the following user notes regarding '{payload.topic}':\n\n{payload.prompt}\n\n"
-            f"Format the output in clean Markdown with clear headings, bullet points, and an executive summary."
+            f"You are a neutral research assistant. Synthesize a formal, structured executive brief "
+            f"strictly using the user notes provided below for '{payload.topic}':\n\n{payload.prompt}\n\n"
+            f"Do not extrapolate or invent external details. Format in clean Markdown."
         )
-        ai_response = gemini_client.models.generate_content(
+        ai_response = genai.Client().models.generate_content(
             model='gemini-3.8-flash',
             contents=synthesis_prompt,
         )
@@ -156,16 +141,16 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
 
         db.table("agent_inter_logs").insert({
             "source_agent": "The Log Archivist",
-            "target_agent": "LIAM_EMAIL",
+            "target_agent": "LIAM",
             "log_type": "SYNTHESIS_DOC",
-            "content": f"Synthesized research brief for topic: {payload.topic}"
+            "content": f"Synthesized brief for topic: {payload.topic}"
         }).execute()
 
         return {
             "status": "success",
             "topic": payload.topic,
             "synthesized_content": doc_content,
-            "note": "Document successfully synthesized by the fleet."
+            "note": "Document successfully synthesized from provided notes."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -202,7 +187,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>Multi-Agent Fleet Habitat <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Synergistic Autonomous AI Ecosystem (3 Active Nodes - 12 Min Cadence)</p>
+            <p style="color: #94a3b8; margin-top: 0;">Autonomous Telemetry Ecosystem (12 Min Cadence)</p>
             
             <div id="agent-grid" class="agent-grid">
                 Loading fleet telemetry...
@@ -212,7 +197,7 @@ def read_root():
         <div class="card">
             <h3>Live Fleet Interaction</h3>
             <div class="chat-box">
-                <input type="text" id="user-msg" placeholder="Transmit message to the 3-agent fleet..." onkeypress="if(event.key === 'Enter') sendMsg()">
+                <input type="text" id="user-msg" placeholder="Send prompt to agent fleet..." onkeypress="if(event.key === 'Enter') sendMsg()">
                 <button id="transmit-btn" onclick="sendMsg()">Transmit</button>
             </div>
             <p id="agent-reply" style="color: #38bdf8; margin-top: 1rem; font-style: italic;"></p>
@@ -221,15 +206,15 @@ def read_root():
         <div class="card">
             <h3>Research Synthesizer & Document Builder</h3>
             <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
-                <input type="text" id="synth-topic" placeholder="Research Topic (e.g., Grand Season & Vicentus Sync)">
-                <textarea id="synth-prompt" rows="3" placeholder="Paste your research notes or prompt for the Log Archivist to synthesize..."></textarea>
+                <input type="text" id="synth-topic" placeholder="Research Topic">
+                <textarea id="synth-prompt" rows="3" placeholder="Paste your research notes here to synthesize..."></textarea>
                 <button id="synth-btn" onclick="synthesizeDoc()" style="align-self: flex-end;">Synthesize & Create Deliverable</button>
             </div>
             <p id="synth-result" style="color: #34d399; margin-top: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;"></p>
         </div>
 
         <div class="card">
-            <h3>Inter-Agent & Habitat Activity Logs</h3>
+            <h3>Activity Logs</h3>
             <div id="logs" class="logs-container">Loading sync logs...</div>
         </div>
     </div>
@@ -255,7 +240,7 @@ def read_root():
                         `;
                     });
                 } else {
-                    gridHtml = '<p style="color: #94a3b8;">Initializing agent records in Supabase...</p>';
+                    gridHtml = '<p style="color: #94a3b8;">Initializing records...</p>';
                 }
                 document.getElementById('agent-grid').innerHTML = gridHtml;
                 
@@ -281,7 +266,7 @@ def read_root():
             
             btn.disabled = true;
             replyEl.style.color = "#38bdf8";
-            replyEl.innerText = "Transmitting to fleet network...";
+            replyEl.innerText = "Transmitting...";
             try {
                 const res = await fetch('/interact', {
                     method: 'POST',
@@ -289,12 +274,12 @@ def read_root():
                     body: JSON.stringify({ message: input.value, user_name: 'Liam' })
                 });
                 const data = await res.json();
-                replyEl.innerText = "Fleet Response: " + data.reply;
+                replyEl.innerText = "Response: " + data.reply;
                 input.value = '';
                 fetchStatus();
             } catch(e) {
                 replyEl.style.color = "#f87171";
-                replyEl.innerText = "Transmission failed. Check network connection.";
+                replyEl.innerText = "Transmission failed.";
             } finally {
                 btn.disabled = false;
             }
@@ -310,7 +295,7 @@ def read_root():
             
             btn.disabled = true;
             resultEl.style.color = "#38bdf8";
-            resultEl.innerText = "Log Archivist is synthesizing research notes...";
+            resultEl.innerText = "Synthesizing notes...";
             try {
                 const res = await fetch('/synthesize-research', {
                     method: 'POST',
@@ -325,7 +310,7 @@ def read_root():
                 fetchStatus();
             } catch(e) {
                 resultEl.style.color = "#f87171";
-                resultEl.innerText = "Synthesis transmission failed.";
+                resultEl.innerText = "Synthesis failed.";
             } finally {
                 btn.disabled = false;
             }
