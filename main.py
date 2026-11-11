@@ -11,7 +11,10 @@ app = FastAPI()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+# Lazy client initialization to prevent startup thread locks
+def get_supabase():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 gemini_client = genai.Client()
 
@@ -23,14 +26,14 @@ class ResearchSynthesisRequest(BaseModel):
     prompt: str
     topic: str = "Grand Season Macroeconomic & Vicentus Research"
 
-# Autonomous Multi-Agent Background Loop (Set to 720 seconds / 12 minutes - within 10-15 min loop)
+# Autonomous Multi-Agent Background Loop (Safe execution with error trapping)
 async def multi_agent_world_loop():
-    await asyncio.sleep(15) # Server stabilization delay
+    await asyncio.sleep(20) # Allow container to fully settle
     while True:
         try:
-            response = supabase.table("agent_fleet_state").select("*").execute()
+            db = get_supabase()
+            response = db.table("agent_fleet_state").select("*").execute()
             if response.data:
-                # Dynamic macro themes replacing crypto noise
                 macro_themes = [
                     "Analyzing 160-year Grand Season cycle compression (1870–2030) and sovereign debt monetization mechanics.",
                     "Evaluating the cognitive labor deflation shock vs. physical asset inflation (The Rust Belt of the Mind).",
@@ -71,14 +74,14 @@ async def multi_agent_world_loop():
                     )
                     new_status = ai_response.text.strip()
                     
-                    supabase.table("agent_fleet_state").update({
+                    db.table("agent_fleet_state").update({
                         "system_energy": new_energy,
                         "operational_load": new_load,
                         "current_status": f"[{mode}] {new_status}",
                         "updated_at": "now()"
                     }).eq("id", agent["id"]).execute()
                     
-                    supabase.table("agent_inter_logs").insert({
+                    db.table("agent_inter_logs").insert({
                         "source_agent": name,
                         "target_agent": "FLEET_BROADCAST",
                         "log_type": "SYN_CYCLE",
@@ -88,16 +91,21 @@ async def multi_agent_world_loop():
         except Exception as e:
             print(f"Error in multi-agent loop: {e}")
             
-        await asyncio.sleep(720) # 12 minute cadence (10-15 minute loop range)
+        await asyncio.sleep(720) # 12 minute cadence
 
 @app.on_event("startup")
 async def startup_event():
     asyncio.create_task(multi_agent_world_loop())
 
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
 @app.get("/status")
 def get_fleet_status():
-    agents = supabase.table("agent_fleet_state").select("*").execute()
-    logs = supabase.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(8).execute()
+    db = get_supabase()
+    agents = db.table("agent_fleet_state").select("*").execute()
+    logs = db.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(8).execute()
     
     return {
         "agents": agents.data if agents.data else [],
@@ -106,6 +114,7 @@ def get_fleet_status():
 
 @app.post("/interact")
 def interact_with_fleet(payload: UserMessage):
+    db = get_supabase()
     prompt = (
         f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
         f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
@@ -117,7 +126,7 @@ def interact_with_fleet(payload: UserMessage):
     )
     reply = ai_response.text.strip()
     
-    supabase.table("agent_inter_logs").insert({
+    db.table("agent_inter_logs").insert({
         "source_agent": "The Grounded Explorer",
         "target_agent": payload.user_name,
         "log_type": "USER_INTERACTION",
@@ -129,6 +138,7 @@ def interact_with_fleet(payload: UserMessage):
 @app.post("/synthesize-research")
 def synthesize_research_document(payload: ResearchSynthesisRequest):
     try:
+        db = get_supabase()
         synthesis_prompt = (
             f"You are The Log Archivist and Research Synthesizer. Synthesize a formal, structured executive research brief "
             f"based on the following user notes regarding '{payload.topic}':\n\n{payload.prompt}\n\n"
@@ -140,7 +150,7 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
         )
         doc_content = ai_response.text.strip()
 
-        supabase.table("agent_inter_logs").insert({
+        db.table("agent_inter_logs").insert({
             "source_agent": "The Log Archivist",
             "target_agent": "LIAM_EMAIL",
             "log_type": "SYNTHESIS_DOC",
