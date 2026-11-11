@@ -1,7 +1,6 @@
 import os
 import asyncio
 import random
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -24,27 +23,21 @@ class ResearchSynthesisRequest(BaseModel):
     prompt: str
     topic: str = "Grand Season Macroeconomic & Vicentus Research"
 
-async def fetch_external_telemetry() -> str:
-    try:
-        async with httpx.AsyncClient(http2=True, timeout=5.0) as client:
-            response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
-            if response.status_code == 200:
-                data = response.json()
-                btc = data.get("bitcoin", {}).get("usd", "Unknown")
-                eth = data.get("ethereum", {}).get("usd", "Unknown")
-                return f"External Market Feed - BTC: ${btc} USD | ETH: ${eth} USD"
-    except Exception:
-        pass
-    return "External Telemetry Feed: Nominal"
-
-# Autonomous Multi-Agent Background Loop (45-second cadence)
+# Autonomous Multi-Agent Background Loop (Set to 720 seconds / 12 minutes - within 10-15 min loop)
 async def multi_agent_world_loop():
-    await asyncio.sleep(5)
+    await asyncio.sleep(15) # Server stabilization delay
     while True:
         try:
             response = supabase.table("agent_fleet_state").select("*").execute()
             if response.data:
-                telemetry_data = await fetch_external_telemetry()
+                # Dynamic macro themes replacing crypto noise
+                macro_themes = [
+                    "Analyzing 160-year Grand Season cycle compression (1870–2030) and sovereign debt monetization mechanics.",
+                    "Evaluating the cognitive labor deflation shock vs. physical asset inflation (The Rust Belt of the Mind).",
+                    "Assessing Project Vicentus HIPAA-safe FHIR real-time medication stream interception and cryptographic edge telemetry.",
+                    "Monitoring macroeconomic fiscal dominance, financial repression, and the liquidity architecture."
+                ]
+                current_focus = random.choice(macro_themes)
                 
                 for agent in response.data:
                     name = agent["agent_name"]
@@ -68,8 +61,8 @@ async def multi_agent_world_loop():
                     prompt = (
                         f"You are {name}, operating with the role '{role}' in a 3-agent synergistic ecosystem. "
                         f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
-                        f"Shared Environment Data: {telemetry_data}. "
-                        f"Write a concise, 1-sentence immersive status update reflecting your unique operational perspective on Liam's macro research or Vicentus."
+                        f"Current Macro Focus: {current_focus}. "
+                        f"Write a concise, 1-sentence immersive status update reflecting your unique analytical perspective on Liam's macro research or Vicentus."
                     )
                     
                     ai_response = gemini_client.models.generate_content(
@@ -95,7 +88,7 @@ async def multi_agent_world_loop():
         except Exception as e:
             print(f"Error in multi-agent loop: {e}")
             
-        await asyncio.sleep(45)
+        await asyncio.sleep(720) # 12 minute cadence (10-15 minute loop range)
 
 @app.on_event("startup")
 async def startup_event():
@@ -116,7 +109,7 @@ def interact_with_fleet(payload: UserMessage):
     prompt = (
         f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
         f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
-        f"Respond in character: pragmatic, collaborative, and focused on Liam's research themes."
+        f"Respond in character: pragmatic, collaborative, and focused on Liam's macro-economic and medical tech research."
     )
     ai_response = gemini_client.models.generate_content(
         model='gemini-3.8-flash',
@@ -136,10 +129,9 @@ def interact_with_fleet(payload: UserMessage):
 @app.post("/synthesize-research")
 def synthesize_research_document(payload: ResearchSynthesisRequest):
     try:
-        # Prompt the agent fleet to synthesize notes into a formal brief
         synthesis_prompt = (
             f"You are The Log Archivist and Research Synthesizer. Synthesize a formal, structured executive research brief "
-            f"based on the following user prompt/notes regarding '{payload.topic}':\n\n{payload.prompt}\n\n"
+            f"based on the following user notes regarding '{payload.topic}':\n\n{payload.prompt}\n\n"
             f"Format the output in clean Markdown with clear headings, bullet points, and an executive summary."
         )
         ai_response = gemini_client.models.generate_content(
@@ -148,7 +140,6 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
         )
         doc_content = ai_response.text.strip()
 
-        # Log synthesis action
         supabase.table("agent_inter_logs").insert({
             "source_agent": "The Log Archivist",
             "target_agent": "LIAM_EMAIL",
@@ -198,7 +189,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>Multi-Agent Fleet Habitat <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Synergistic Autonomous AI Ecosystem (3 Active Nodes)</p>
+            <p style="color: #94a3b8; margin-top: 0;">Synergistic Autonomous AI Ecosystem (3 Active Nodes - 12 Min Cadence)</p>
             
             <div id="agent-grid" class="agent-grid">
                 Loading fleet telemetry...
