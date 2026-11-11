@@ -22,8 +22,8 @@ class UserMessage(BaseModel):
 
 async def fetch_external_telemetry() -> str:
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", timeout=5.0)
+        async with httpx.AsyncClient(http2=True, timeout=5.0) as client:
+            response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
             if response.status_code == 200:
                 data = response.json()
                 btc = data.get("bitcoin", {}).get("usd", "Unknown")
@@ -33,11 +33,12 @@ async def fetch_external_telemetry() -> str:
         pass
     return "External Telemetry Feed: Nominal"
 
-# Autonomous Multi-Agent Loop
+# Autonomous Multi-Agent Loop with Stable Client Handling
 async def multi_agent_world_loop():
+    # Wait 5 seconds on startup for server to stabilize
+    await asyncio.sleep(5)
     while True:
         try:
-            # Fetch all agents in the fleet
             response = supabase.table("agent_fleet_state").select("*").execute()
             if response.data:
                 telemetry_data = await fetch_external_telemetry()
@@ -48,7 +49,6 @@ async def multi_agent_world_loop():
                     energy = agent["system_energy"]
                     load = agent["operational_load"]
                     
-                    # Energy & Load mechanics
                     if energy < 25:
                         mode = "REST / CALIBRATION"
                         new_energy = min(100, energy + 15)
@@ -62,7 +62,6 @@ async def multi_agent_world_loop():
                         new_energy = max(0, energy - random.randint(1, 4))
                         new_load = min(100, load + random.randint(-5, 5))
                     
-                    # Generate agent-specific thought via Gemini
                     prompt = (
                         f"You are {name}, operating with the role '{role}' in a 3-agent synergistic ecosystem. "
                         f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
@@ -70,13 +69,12 @@ async def multi_agent_world_loop():
                         f"Write a concise, 1-sentence immersive status update reflecting your unique operational perspective."
                     )
                     
-                    ai_response = genai.Client().models.generate_content(
+                    ai_response = gemini_client.models.generate_content(
                         model='gemini-3.8-flash',
                         contents=prompt,
                     )
                     new_status = ai_response.text.strip()
                     
-                    # Update agent state in Supabase
                     supabase.table("agent_fleet_state").update({
                         "system_energy": new_energy,
                         "operational_load": new_load,
@@ -84,7 +82,6 @@ async def multi_agent_world_loop():
                         "updated_at": "now()"
                     }).eq("id", agent["id"]).execute()
                     
-                    # Write inter-agent log
                     supabase.table("agent_inter_logs").insert({
                         "source_agent": name,
                         "target_agent": "FLEET_BROADCAST",
@@ -118,7 +115,7 @@ def interact_with_fleet(payload: UserMessage):
         f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
         f"Respond in character: pragmatic, collaborative, and structured."
     )
-    ai_response = genai.Client().models.generate_content(
+    ai_response = gemini_client.models.generate_content(
         model='gemini-3.8-flash',
         contents=prompt,
     )
