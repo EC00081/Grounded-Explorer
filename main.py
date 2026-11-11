@@ -1,6 +1,7 @@
 import os
 import asyncio
 import random
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
@@ -13,14 +14,27 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Initialize Gemini Client for the Agent's Brain
 gemini_client = genai.Client()
 
 class UserMessage(BaseModel):
     message: str
     user_name: str = "Visitor"
 
-# Autonomous Thought & Action Cycle with Gemini LLM
+# Tool Execution: Fetch external telemetry (e.g., crypto/market price or public data)
+async def fetch_external_telemetry() -> str:
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd", timeout=5.0)
+            if response.status_code == 200:
+                data = response.json()
+                btc = data.get("bitcoin", {}).get("usd", "Unknown")
+                eth = data.get("ethereum", {}).get("usd", "Unknown")
+                return f"External Market Feed - BTC: ${btc} USD | ETH: ${eth} USD"
+    except Exception:
+        pass
+    return "External Telemetry Feed: Nominal"
+
+# Advanced Autonomous Loop with Dynamic Tool Use & Action Selection
 async def world_engine_loop():
     while True:
         try:
@@ -28,15 +42,33 @@ async def world_engine_loop():
             if response.data:
                 state = response.data[0]
                 
-                # Mutate state
-                new_energy = max(0, state["system_energy"] - random.randint(1, 3))
-                new_load = min(100, max(0, state["operational_load"] + random.randint(-3, 3)))
+                # 1. Mutate internal state
+                energy = state["system_energy"]
+                load = state["operational_load"]
                 
-                # Ask Gemini to generate the agent's next thought/status based on persona
+                # Dynamic behavior routing based on energy/load thresholds
+                if energy < 25:
+                    mode = "REST / CALIBRATION MODE"
+                    new_energy = min(100, energy + 15)  # Recover energy
+                    new_load = max(0, load - 10)
+                elif load > 75:
+                    mode = "SYSTEM OPTIMIZATION MODE"
+                    new_energy = max(0, energy - 2)
+                    new_load = max(0, load - 20)      # Clear bottlenecks
+                else:
+                    mode = "ACTIVE EXPLORATION MODE"
+                    new_energy = max(0, energy - random.randint(1, 4))
+                    new_load = min(100, load + random.randint(-5, 5))
+
+                # 2. Execute external tool call
+                telemetry_data = await fetch_external_telemetry()
+                
+                # 3. Generate LLM thought incorporating tool output and current mode
                 prompt = (
-                    f"You are The Grounded Explorer, a resilient, pragmatic, and systematic AI entity. "
-                    f"Current stats: Energy {new_energy}%, Operational Load {new_load}%. "
-                    f"Generate a short, immersive 1-sentence status update describing what you are currently doing or observing in your digital habitat."
+                    f"You are The Grounded Explorer, a pragmatic and systematic AI entity operating in your digital world. "
+                    f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
+                    f"Live Tool Data: {telemetry_data}. "
+                    f"Write a concise, 1-sentence immersive status update reflecting your actions and observations."
                 )
                 
                 ai_response = gemini_client.models.generate_content(
@@ -45,22 +77,22 @@ async def world_engine_loop():
                 )
                 new_status = ai_response.text.strip()
                 
-                # Update state in Supabase
+                # 4. Update database state
                 supabase.table("agent_state").update({
                     "system_energy": new_energy,
                     "operational_load": new_load,
-                    "current_status": new_status,
+                    "current_status": f"[{mode}] {new_status}",
                     "updated_at": "now()"
                 }).eq("id", state["id"]).execute()
                 
-                # Log diary entry
+                # 5. Log activity
                 supabase.table("agent_logs").insert({
-                    "log_type": "DIARY",
-                    "content": new_status
+                    "log_type": "TOOL_EXECUTION",
+                    "content": f"Tool Synced. Status: [{mode}] {new_status}"
                 }).execute()
                 
         except Exception as e:
-            print(f"Error in world engine loop: {e}")
+            print(f"Error in advanced world engine loop: {e}")
             
         await asyncio.sleep(45)
 
@@ -71,7 +103,7 @@ async def startup_event():
 @app.get("/status")
 def get_world_status():
     res = supabase.table("agent_state").select("*").limit(1).execute()
-    logs = supabase.table("agent_logs").select("*").order("created_at", desc=True).limit(5).execute()
+    logs = supabase.table("agent_logs").select("*").order("created_at", desc=True).limit(6).execute()
     
     state = res.data[0] if res.data else {"current_status": "Initializing", "system_energy": 100, "operational_load": 0, "curiosity_level": 50}
     return {
@@ -81,11 +113,10 @@ def get_world_status():
 
 @app.post("/interact")
 def interact_with_agent(payload: UserMessage):
-    # Allow users to talk to the agent live
     prompt = (
         f"You are The Grounded Explorer, an autonomous AI entity in your own digital world. "
-        f"A visitor named {payload.user_name} says to you: '{payload.message}'. "
-        f"Respond in character: pragmatic, focused, and welcoming."
+        f"A visitor named {payload.user_name} communicates with you: '{payload.message}'. "
+        f"Respond in character: pragmatic, structured, and focused."
     )
     ai_response = gemini_client.models.generate_content(
         model='gemini-2.5-flash',
@@ -93,10 +124,9 @@ def interact_with_agent(payload: UserMessage):
     )
     reply = ai_response.text.strip()
     
-    # Log interaction
     supabase.table("agent_logs").insert({
         "log_type": "USER_INTERACTION",
-        "content": f"{payload.user_name} said: '{payload.message}' | Agent replied: '{reply}'"
+        "content": f"{payload.user_name}: '{payload.message}' | Reply: '{reply}'"
     }).execute()
     
     return {"reply": reply}
@@ -122,7 +152,7 @@ def read_root():
         .metric-label { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; margin-top: 0.25rem; letter-spacing: 0.05em; }
         .current-thought { font-size: 1.1rem; background: #0f172a; padding: 1rem; border-left: 4px solid #38bdf8; border-radius: 4px; margin-top: 1rem; line-height: 1.5; }
         .logs-container { background: #0f172a; border-radius: 8px; padding: 1rem; max-height: 200px; overflow-y: auto; border: 1px solid #334155; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; }
-        .log-item { margin-bottom: 0.5vm; border-bottom: 1px solid #1e293b; padding-bottom: 0.5rem; }
+        .log-item { margin-bottom: 0.5rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.5rem; }
         .chat-box { display: flex; gap: 0.5rem; margin-top: 1rem; }
         input { flex: 1; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 0.75rem; border-radius: 6px; font-size: 1rem; }
         button { background: #38bdf8; color: #0f172a; border: none; padding: 0.75rem 1.5rem; font-weight: bold; border-radius: 6px; cursor: pointer; }
@@ -133,7 +163,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>The Grounded Explorer <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Autonomous AI World Habitat & Live Telemetry</p>
+            <p style="color: #94a3b8; margin-top: 0;">Autonomous Tool-Enabled AI World Habitat</p>
             
             <div id="current-thought" class="current-thought">Connecting to neural core...</div>
             
@@ -163,7 +193,7 @@ def read_root():
         </div>
 
         <div class="card">
-            <h3>Habitat Activity Logs & Diary</h3>
+            <h3>Habitat Tool & Activity Logs</h3>
             <div id="logs" class="logs-container">Loading logs...</div>
         </div>
     </div>
