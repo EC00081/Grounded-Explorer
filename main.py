@@ -12,7 +12,6 @@ app = FastAPI()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-# Lazy client initialization to prevent startup thread locks
 def get_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -26,9 +25,9 @@ class ResearchSynthesisRequest(BaseModel):
     prompt: str
     topic: str = "Grand Season Macroeconomic & Vicentus Research"
 
-# Autonomous Multi-Agent Background Loop (Safe execution with error trapping)
+# Autonomous Multi-Agent Background Loop (12-minute cadence)
 async def multi_agent_world_loop():
-    await asyncio.sleep(20) # Allow container to fully settle
+    await asyncio.sleep(20)
     while True:
         try:
             db = get_supabase()
@@ -91,7 +90,7 @@ async def multi_agent_world_loop():
         except Exception as e:
             print(f"Error in multi-agent loop: {e}")
             
-        await asyncio.sleep(720) # 12 minute cadence
+        await asyncio.sleep(720)
 
 @app.on_event("startup")
 async def startup_event():
@@ -103,37 +102,42 @@ def health_check():
 
 @app.get("/status")
 def get_fleet_status():
-    db = get_supabase()
-    agents = db.table("agent_fleet_state").select("*").execute()
-    logs = db.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(8).execute()
-    
-    return {
-        "agents": agents.data if agents.data else [],
-        "logs": logs.data if logs.data else []
-    }
+    try:
+        db = get_supabase()
+        agents = db.table("agent_fleet_state").select("*").execute()
+        logs = db.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(8).execute()
+        return {
+            "agents": agents.data if agents.data else [],
+            "logs": logs.data if logs.data else []
+        }
+    except Exception as e:
+        return {"agents": [], "logs": [{"source_agent": "SYSTEM", "target_agent": "LIAM", "content": f"Status fetch error: {str(e)}"}]}
 
 @app.post("/interact")
 def interact_with_fleet(payload: UserMessage):
-    db = get_supabase()
-    prompt = (
-        f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
-        f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
-        f"Respond in character: pragmatic, collaborative, and focused on Liam's macro-economic and medical tech research."
-    )
-    ai_response = gemini_client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=prompt,
-    )
-    reply = ai_response.text.strip()
-    
-    db.table("agent_inter_logs").insert({
-        "source_agent": "The Grounded Explorer",
-        "target_agent": payload.user_name,
-        "log_type": "USER_INTERACTION",
-        "content": f"Visitor {payload.user_name}: '{payload.message}' | Fleet Reply: '{reply}'"
-    }).execute()
-    
-    return {"reply": reply}
+    try:
+        db = get_supabase()
+        prompt = (
+            f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
+            f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
+            f"Respond in character: pragmatic, collaborative, and focused on Liam's macro-economic and medical tech research."
+        )
+        ai_response = gemini_client.models.generate_content(
+            model='gemini-3.8-flash',
+            contents=prompt,
+        )
+        reply = ai_response.text.strip()
+        
+        db.table("agent_inter_logs").insert({
+            "source_agent": "The Grounded Explorer",
+            "target_agent": payload.user_name,
+            "log_type": "USER_INTERACTION",
+            "content": f"Visitor {payload.user_name}: '{payload.message}' | Fleet Reply: '{reply}'"
+        }).execute()
+        
+        return {"reply": reply}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/synthesize-research")
 def synthesize_research_document(payload: ResearchSynthesisRequest):
@@ -161,7 +165,7 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
             "status": "success",
             "topic": payload.topic,
             "synthesized_content": doc_content,
-            "note": "Document successfully synthesized by the fleet. Ready for export/email delivery."
+            "note": "Document successfully synthesized by the fleet."
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -210,7 +214,7 @@ def read_root():
             <h3>Live Fleet Interaction</h3>
             <div class="chat-box">
                 <input type="text" id="user-msg" placeholder="Transmit message to the 3-agent fleet..." onkeypress="if(event.key === 'Enter') sendMsg()">
-                <button onclick="sendMsg()">Transmit</button>
+                <button id="transmit-btn" onclick="sendMsg()">Transmit</button>
             </div>
             <p id="agent-reply" style="color: #38bdf8; margin-top: 1rem; font-style: italic;"></p>
         </div>
@@ -220,7 +224,7 @@ def read_root():
             <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
                 <input type="text" id="synth-topic" placeholder="Research Topic (e.g., Grand Season & Vicentus Sync)">
                 <textarea id="synth-prompt" rows="3" placeholder="Paste your research notes or prompt for the Log Archivist to synthesize..."></textarea>
-                <button onclick="synthesizeDoc()" style="align-self: flex-end;">Synthesize & Create Deliverable</button>
+                <button id="synth-btn" onclick="synthesizeDoc()" style="align-self: flex-end;">Synthesize & Create Deliverable</button>
             </div>
             <p id="synth-result" style="color: #34d399; margin-top: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;"></p>
         </div>
@@ -238,81 +242,49 @@ def read_root():
                 const data = await res.json();
                 
                 let gridHtml = '';
-                data.agents.forEach(agent => {
-                    gridHtml += `
-                        <div class="agent-box">
-                            <div class="agent-name">${agent.agent_name}</div>
-                            <div class="agent-role">${agent.role_designation}</div>
-                            <div class="metric-row"><span>Energy:</span> <strong>${agent.system_energy}%</strong></div>
-                            <div class="metric-row"><span>Load:</span> <strong>${agent.operational_load}%</strong></div>
-                            <div class="metric-row"><span>Curiosity:</span> <strong>${agent.curiosity_level}%</strong></div>
-                            <div class="thought-box">"${agent.current_status}"</div>
-                        </div>
-                    `;
-                });
+                if(data.agents && data.agents.length > 0) {
+                    data.agents.forEach(agent => {
+                        gridHtml += `
+                            <div class="agent-box">
+                                <div class="agent-name">${agent.agent_name}</div>
+                                <div class="agent-role">${agent.role_designation}</div>
+                                <div class="metric-row"><span>Energy:</span> <strong>${agent.system_energy}%</strong></div>
+                                <div class="metric-row"><span>Load:</span> <strong>${agent.operational_load}%</strong></div>
+                                <div class="metric-row"><span>Curiosity:</span> <strong>${agent.curiosity_level}%</strong></div>
+                                <div class="thought-box">"${agent.current_status}"</div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    gridHtml = '<p style="color: #94a3b8;">Initializing agent records in Supabase...</p>';
+                }
                 document.getElementById('agent-grid').innerHTML = gridHtml;
                 
                 let logsHtml = '';
-                data.logs.forEach(log => {
-                    logsHtml += `<div class="log-item">[${log.source_agent} ➔ ${log.target_agent}] ${log.content}</div>`;
-                });
+                if(data.logs && data.logs.length > 0) {
+                    data.logs.forEach(log => {
+                        logsHtml += `<div class="log-item">[${log.source_agent} ➔ ${log.target_agent}] ${log.content}</div>`;
+                    });
+                } else {
+                    logsHtml = '<div class="log-item">No activity logs recorded yet.</div>';
+                }
                 document.getElementById('logs').innerHTML = logsHtml;
             } catch (err) {
-                document.getElementById('status-badge').innerText = "OFFLINE";
+                document.getElementById('status-badge').innerText = "SYNC ERROR";
             }
         }
 
         async function sendMsg() {
             const input = document.getElementById('user-msg');
             const replyEl = document.getElementById('agent-reply');
+            const btn = document.getElementById('transmit-btn');
             if(!input.value.trim()) return;
             
+            btn.disabled = true;
+            replyEl.style.color = "#38bdf8";
             replyEl.innerText = "Transmitting to fleet network...";
             try {
                 const res = await fetch('/interact', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: input.value, user_name: 'Liam' })
-                });
-                const data = await res.json();
-                replyEl.innerText = "Fleet Response: " + data.reply;
-                input.value = '';
-                fetchStatus();
-            } catch(e) {
-                replyEl.innerText = "Transmission failed.";
-            }
-        }
-
-        async function synthesizeDoc() {
-            const topicInput = document.getElementById('synth-topic');
-            const promptInput = document.getElementById('synth-prompt');
-            const resultEl = document.getElementById('synth-result');
-            
-            if(!promptInput.value.trim()) return;
-            
-            resultEl.style.color = "#38bdf8";
-            resultEl.innerText = "Log Archivist is synthesizing research notes...";
-            try {
-                const res = await fetch('/synthesize-research', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ topic: topicInput.value || 'General Research', prompt: promptInput.value })
-                });
-                const data = await res.json();
-                resultEl.style.color = "#34d399";
-                resultEl.innerText = "SUCCESS:\n\n" + data.synthesized_content;
-                topicInput.value = '';
-                promptInput.value = '';
-                fetchStatus();
-            } catch(e) {
-                resultEl.style.color = "#f87171";
-                resultEl.innerText = "Synthesis transmission failed.";
-            }
-        }
-
-        setInterval(fetchStatus, 5000);
-        fetchStatus();
-    </script>
-</body>
-</html>
-    """
