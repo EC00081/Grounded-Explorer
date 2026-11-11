@@ -2,7 +2,7 @@ import os
 import asyncio
 import random
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
@@ -20,7 +20,6 @@ class UserMessage(BaseModel):
     message: str
     user_name: str = "Visitor"
 
-# Tool Execution: Fetch external telemetry (e.g., crypto/market price or public data)
 async def fetch_external_telemetry() -> str:
     try:
         async with httpx.AsyncClient() as client:
@@ -34,41 +33,47 @@ async def fetch_external_telemetry() -> str:
         pass
     return "External Telemetry Feed: Nominal"
 
-# Advanced Autonomous Loop with Dynamic Tool Use & Action Selection
+# Helper to generate vector embeddings using Gemini
+def get_embedding(text: str):
+    try:
+        response = gemini_client.models.embed_content(
+            model="text-embedding-004",
+            contents=text
+        )
+        return response.embedding.values
+    except Exception as e:
+        print(f"Embedding error: {e}")
+        return None
+
 async def world_engine_loop():
     while True:
         try:
             response = supabase.table("agent_state").select("*").limit(1).execute()
             if response.data:
                 state = response.data[0]
-                
-                # 1. Mutate internal state
                 energy = state["system_energy"]
                 load = state["operational_load"]
                 
-                # Dynamic behavior routing based on energy/load thresholds
                 if energy < 25:
                     mode = "REST / CALIBRATION MODE"
-                    new_energy = min(100, energy + 15)  # Recover energy
+                    new_energy = min(100, energy + 15)
                     new_load = max(0, load - 10)
                 elif load > 75:
                     mode = "SYSTEM OPTIMIZATION MODE"
                     new_energy = max(0, energy - 2)
-                    new_load = max(0, load - 20)      # Clear bottlenecks
+                    new_load = max(0, load - 20)
                 else:
                     mode = "ACTIVE EXPLORATION MODE"
                     new_energy = max(0, energy - random.randint(1, 4))
                     new_load = min(100, load + random.randint(-5, 5))
 
-                # 2. Execute external tool call
                 telemetry_data = await fetch_external_telemetry()
                 
-                # 3. Generate LLM thought incorporating tool output and current mode
                 prompt = (
                     f"You are The Grounded Explorer, a pragmatic and systematic AI entity operating in your digital world. "
                     f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
                     f"Live Tool Data: {telemetry_data}. "
-                    f"Write a concise, 1-sentence immersive status update reflecting your actions and observations."
+                    f"Write a concise, 1-sentence immersive status update reflecting your current observations."
                 )
                 
                 ai_response = gemini_client.models.generate_content(
@@ -77,7 +82,6 @@ async def world_engine_loop():
                 )
                 new_status = ai_response.text.strip()
                 
-                # 4. Update database state
                 supabase.table("agent_state").update({
                     "system_energy": new_energy,
                     "operational_load": new_load,
@@ -85,11 +89,19 @@ async def world_engine_loop():
                     "updated_at": "now()"
                 }).eq("id", state["id"]).execute()
                 
-                # 5. Log activity
+                log_content = f"[{mode}] {new_status}"
                 supabase.table("agent_logs").insert({
-                    "log_type": "TOOL_EXECUTION",
-                    "content": f"Tool Synced. Status: [{mode}] {new_status}"
+                    "log_type": "DIARY",
+                    "content": log_content
                 }).execute()
+
+                # Generate vector embedding for persistent long-term storage
+                vector = get_embedding(log_content)
+                if vector:
+                    supabase.table("agent_vector_memory").insert({
+                        "content": log_content,
+                        "embedding": vector
+                    }).execute()
                 
         except Exception as e:
             print(f"Error in advanced world engine loop: {e}")
@@ -124,10 +136,18 @@ def interact_with_agent(payload: UserMessage):
     )
     reply = ai_response.text.strip()
     
+    interaction_text = f"{payload.user_name}: '{payload.message}' | Reply: '{reply}'"
     supabase.table("agent_logs").insert({
         "log_type": "USER_INTERACTION",
-        "content": f"{payload.user_name}: '{payload.message}' | Reply: '{reply}'"
+        "content": interaction_text
     }).execute()
+
+    vector = get_embedding(interaction_text)
+    if vector:
+        supabase.table("agent_vector_memory").insert({
+            "content": interaction_text,
+            "embedding": vector
+        }).execute()
     
     return {"reply": reply}
 
@@ -163,7 +183,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>The Grounded Explorer <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Autonomous Tool-Enabled AI World Habitat</p>
+            <p style="color: #94a3b8; margin-top: 0;">Vector-Enabled Autonomous AI World Habitat</p>
             
             <div id="current-thought" class="current-thought">Connecting to neural core...</div>
             
@@ -193,7 +213,7 @@ def read_root():
         </div>
 
         <div class="card">
-            <h3>Habitat Tool & Activity Logs</h3>
+            <h3>Vector Memory & Activity Logs</h3>
             <div id="logs" class="logs-container">Loading logs...</div>
         </div>
     </div>
