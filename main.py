@@ -172,8 +172,7 @@ def synthesize_research_document(payload: ResearchSynthesisRequest):
 
 @app.get("/", response_class=HTMLResponse)
 def read_root():
-    return """
-<!DOCTYPE html>
+    return """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -288,3 +287,53 @@ def read_root():
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message: input.value, user_name: 'Liam' })
+                });
+                const data = await res.json();
+                replyEl.innerText = "Fleet Response: " + data.reply;
+                input.value = '';
+                fetchStatus();
+            } catch(e) {
+                replyEl.style.color = "#f87171";
+                replyEl.innerText = "Transmission failed. Check network connection.";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function synthesizeDoc() {
+            const topicInput = document.getElementById('synth-topic');
+            const promptInput = document.getElementById('synth-prompt');
+            const resultEl = document.getElementById('synth-result');
+            const btn = document.getElementById('synth-btn');
+            
+            if(!promptInput.value.trim()) return;
+            
+            btn.disabled = true;
+            resultEl.style.color = "#38bdf8";
+            resultEl.innerText = "Log Archivist is synthesizing research notes...";
+            try {
+                const res = await fetch('/synthesize-research', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topicInput.value || 'General Research', prompt: promptInput.value })
+                });
+                const data = await res.json();
+                resultEl.style.color = "#34d399";
+                resultEl.innerText = "SUCCESS:\\n\\n" + data.synthesized_content;
+                topicInput.value = '';
+                promptInput.value = '';
+                fetchStatus();
+            } catch(e) {
+                resultEl.style.color = "#f87171";
+                resultEl.innerText = "Synthesis transmission failed.";
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        setInterval(fetchStatus, 5000);
+        fetchStatus();
+    </script>
+</body>
+</html>
+"""
