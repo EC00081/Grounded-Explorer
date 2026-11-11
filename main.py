@@ -33,7 +33,6 @@ async def fetch_external_telemetry() -> str:
         pass
     return "External Telemetry Feed: Nominal"
 
-# Helper to generate vector embeddings using Gemini
 def get_embedding(text: str):
     try:
         response = gemini_client.models.embed_content(
@@ -77,7 +76,7 @@ async def world_engine_loop():
                 )
                 
                 ai_response = gemini_client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-2.0-flash',
                     contents=prompt,
                 )
                 new_status = ai_response.text.strip()
@@ -95,7 +94,6 @@ async def world_engine_loop():
                     "content": log_content
                 }).execute()
 
-                # Generate vector embedding for persistent long-term storage
                 vector = get_embedding(log_content)
                 if vector:
                     supabase.table("agent_vector_memory").insert({
@@ -131,7 +129,7 @@ def interact_with_agent(payload: UserMessage):
         f"Respond in character: pragmatic, structured, and focused."
     )
     ai_response = gemini_client.models.generate_content(
-        model='gemini-2.5-flash',
+        model='gemini-2.0-flash',
         contents=prompt,
     )
     reply = ai_response.text.strip()
