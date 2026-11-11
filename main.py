@@ -7,193 +7,116 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from supabase import create_client, Client
 from google import genai
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 
-app = FastAPI(title="Multi-Agent Fleet Research & Synthesis Engine")
+app = FastAPI()
 
-# Environment Configuration
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 gemini_client = genai.Client()
 
-# Pydantic Models for Interactions
-class ResearchPrompt(BaseModel):
-    user_prompt: str
-    user_email: str
-    focus_topic: str = "Grand Season & Liquidation Architecture"
-
 class UserMessage(BaseModel):
     message: str
     user_name: str = "Liam"
 
-# Google Docs & Drive API Helper
-def create_and_share_google_doc(title: str, content: str, recipient_email: str) -> str:
-    """
-    Programmatically creates a Google Doc using service account credentials,
-    inserts synthesized research content, and shares it with the user's email.
-    """
-    creds_json = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-    if not creds_json:
-        # Fallback if service account JSON is not yet provided in Render env vars
-        return "Google Docs integration active, but GOOGLE_CREDENTIALS_JSON environment variable is missing."
-    
-    try:
-        # Load credentials from environment string
-        import json
-        creds_dict = json.loads(creds_json)
-        SCOPES = ['https://www.googleapis.com/auth/documents', 'https://www.googleapis.com/auth/drive']
-        creds = service_account.Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
-        
-        # Build API clients
-        docs_service = build('docs', 'v1', credentials=creds)
-        drive_service = build('drive', 'v3', credentials=creds)
-        
-        # 1. Create Blank Document
-        doc_body = {'title': title}
-        doc = docs_service.documents().create(body=doc_body).execute()
-        document_id = doc.get('documentId')
-        
-        # 2. Insert Content
-        requests = [
-            {
-                'insertText': {
-                    'location': {'index': 1},
-                    'text': content
-                }
-            }
-        ]
-        docs_service.documents().batchUpdate(documentId=document_id, body={'requests': requests}).execute()
-        
-        # 3. Share with User Email
-        permission = {
-            'type': 'user',
-            'role': 'writer',
-            'emailAddress': recipient_email
-        }
-        drive_service.permissions().create(
-            fileId=document_id,
-            body=permission,
-            sendNotificationEmail=True
-        ).execute()
-        
-        return f"https://docs.google.com/document/d/{document_id}/edit"
-    except Exception as e:
-        return f"Doc generation error: {str(e)}"
+class ResearchSynthesisRequest(BaseModel):
+    prompt: str
+    topic: str = "Grand Season Macroeconomic & Vicentus Research"
 
-# Background Telemetry & Grand Season Thesis Tracking Loop
-async def grand_season_tracking_loop():
-    """
-    Autonomous background loop that monitors external market/economic indicators,
-    pings Gemini to evaluate them against the 160-year Grand Season / Liquidation Architecture thesis,
-    and logs the synthesis directly into Supabase.
-    """
-    await asyncio.sleep(10) # Initial startup delay
+async def fetch_external_telemetry() -> str:
+    try:
+        async with httpx.AsyncClient(http2=True, timeout=5.0) as client:
+            response = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
+            if response.status_code == 200:
+                data = response.json()
+                btc = data.get("bitcoin", {}).get("usd", "Unknown")
+                eth = data.get("ethereum", {}).get("usd", "Unknown")
+                return f"External Market Feed - BTC: ${btc} USD | ETH: ${eth} USD"
+    except Exception:
+        pass
+    return "External Telemetry Feed: Nominal"
+
+# Autonomous Multi-Agent Background Loop (45-second cadence)
+async def multi_agent_world_loop():
+    await asyncio.sleep(5)
     while True:
         try:
-            # Fetch current agent states from fleet
             response = supabase.table("agent_fleet_state").select("*").execute()
             if response.data:
-                async with httpx.AsyncClient(http2=True, timeout=5.0) as client:
-                    # Fetch live market reference data (e.g., BTC, ETH, Treasury yield proxies)
-                    market_res = await client.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum&vs_currencies=usd")
-                    market_data = market_res.json() if market_res.status_code == 200 else {}
-                    btc_price = market_data.get("bitcoin", {}).get("usd", "Unknown")
-
-                # Have the Log Archivist and Telemetry Sentinel synthesize market conditions against the thesis
-                prompt = (
-                    f"You are The Log Archivist and Telemetry Sentinel operating in the Multi-Agent Fleet. "
-                    f"Current Bitcoin Reference Price: ${btc_price} USD. "
-                    f"Evaluate current macroeconomic structural debt pressures, institutional liquidity, and cognitive automation trends "
-                    f"against the 160-year Grand Season thesis (1870-2030) and the Liquidation Architecture. "
-                    f"Write a concise, 1-sentence analytical observation linking current telemetry to the terminal fiat cycle."
-                )
+                telemetry_data = await fetch_external_telemetry()
                 
-                ai_response = gemini_client.models.generate_content(
-                    model='gemini-3.8-flash',
-                    contents=prompt,
-                )
-                analysis_text = ai_response.text.strip()
-                
-                # Log to Supabase Inter-Agent Table
-                supabase.table("agent_inter_logs").insert({
-                    "source_agent": "The Log Archivist",
-                    "target_agent": "GRAND_SEASON_ARCHIVE",
-                    "log_type": "THESIS_TELEMETRY",
-                    "content": f"[GRAND CYCLE TRACKER] {analysis_text}"
-                }).execute()
-                
+                for agent in response.data:
+                    name = agent["agent_name"]
+                    role = agent["role_designation"]
+                    energy = agent["system_energy"]
+                    load = agent["operational_load"]
+                    
+                    if energy < 25:
+                        mode = "REST / CALIBRATION"
+                        new_energy = min(100, energy + 15)
+                        new_load = max(0, load - 10)
+                    elif load > 75:
+                        mode = "SYSTEM OPTIMIZATION"
+                        new_energy = max(0, energy - 2)
+                        new_load = max(0, load - 20)
+                    else:
+                        mode = "ACTIVE SYNERGY"
+                        new_energy = max(0, energy - random.randint(1, 4))
+                        new_load = min(100, load + random.randint(-5, 5))
+                    
+                    prompt = (
+                        f"You are {name}, operating with the role '{role}' in a 3-agent synergistic ecosystem. "
+                        f"Current Mode: {mode}. Energy: {new_energy}%. Operational Load: {new_load}%. "
+                        f"Shared Environment Data: {telemetry_data}. "
+                        f"Write a concise, 1-sentence immersive status update reflecting your unique operational perspective on Liam's macro research or Vicentus."
+                    )
+                    
+                    ai_response = gemini_client.models.generate_content(
+                        model='gemini-3.8-flash',
+                        contents=prompt,
+                    )
+                    new_status = ai_response.text.strip()
+                    
+                    supabase.table("agent_fleet_state").update({
+                        "system_energy": new_energy,
+                        "operational_load": new_load,
+                        "current_status": f"[{mode}] {new_status}",
+                        "updated_at": "now()"
+                    }).eq("id", agent["id"]).execute()
+                    
+                    supabase.table("agent_inter_logs").insert({
+                        "source_agent": name,
+                        "target_agent": "FLEET_BROADCAST",
+                        "log_type": "SYN_CYCLE",
+                        "content": f"[{mode}] {new_status}"
+                    }).execute()
+                    
         except Exception as e:
-            print(f"Error in Grand Season tracking loop: {e}")
+            print(f"Error in multi-agent loop: {e}")
             
-        await asyncio.sleep(300) # Run every 5 minutes
+        await asyncio.sleep(45)
 
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(grand_season_tracking_loop())
+    asyncio.create_task(multi_agent_world_loop())
 
-# FastAPI Endpoints
 @app.get("/status")
 def get_fleet_status():
     agents = supabase.table("agent_fleet_state").select("*").execute()
-    logs = supabase.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(10).execute()
+    logs = supabase.table("agent_inter_logs").select("*").order("created_at", desc=True).limit(8).execute()
     
     return {
         "agents": agents.data if agents.data else [],
         "logs": logs.data if logs.data else []
     }
 
-@app.post("/synthesize-research")
-def synthesize_research_to_gdoc(payload: ResearchPrompt):
-    """
-    Endpoint for the user to submit research prompts. The agent fleet synthesizes the notes
-    using Gemini, generates a formal Google Doc, shares it with the user's email, and logs the action.
-    """
-    try:
-        # Prompt Gemini to draft a formal research brief based on the user's focus
-        synthesis_prompt = (
-            f"You are the senior research synthesis engine for Project Vicentus and the Grand Season macroeconomic framework. "
-            f"Synthesize a formal executive research brief based on the following user prompt: '{payload.user_prompt}' "
-            f"Focus Area: {payload.focus_topic}. "
-            f"Structure the document with an Abstract, Core Structural Analysis, Historical Parallels (1870-2030), and Strategic Takeaways."
-        )
-        
-        ai_response = gemini_client.models.generate_content(
-            model='gemini-3.8-flash',
-            contents=synthesis_prompt,
-        )
-        drafted_content = ai_response.text.strip()
-        
-        doc_title = f"Research Synthesis: {payload.focus_topic}"
-        full_content = f"PROJECT VICENTUS & GRAND SEASON RESEARCH ARCHIVE\nAuthor: Operator / Agent Fleet Synthesis Engine\n\n{drafted_content}"
-        
-        # Generate and share Google Doc
-        doc_url = create_and_share_google_doc(doc_title, full_content, payload.user_email)
-        
-        # Log action to Supabase
-        supabase.table("agent_inter_logs").insert({
-            "source_agent": "The Log Archivist",
-            "target_agent": payload.user_email,
-            "log_type": "DOC_GENERATION",
-            "content": f"Synthesized research brief generated. Shared Doc URL: {doc_url}"
-        }).execute()
-        
-        return {
-            "status": "success",
-            "message": "Research successfully synthesized and shared.",
-            "google_doc_url": doc_url
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 @app.post("/interact")
 def interact_with_fleet(payload: UserMessage):
     prompt = (
         f"You are The Grounded Explorer, speaking on behalf of the 3-agent synergistic fleet. "
         f"A visitor named {payload.user_name} communicates: '{payload.message}'. "
-        f"Respond in character: pragmatic, collaborative, and structured."
+        f"Respond in character: pragmatic, collaborative, and focused on Liam's research themes."
     )
     ai_response = gemini_client.models.generate_content(
         model='gemini-3.8-flash',
@@ -210,6 +133,38 @@ def interact_with_fleet(payload: UserMessage):
     
     return {"reply": reply}
 
+@app.post("/synthesize-research")
+def synthesize_research_document(payload: ResearchSynthesisRequest):
+    try:
+        # Prompt the agent fleet to synthesize notes into a formal brief
+        synthesis_prompt = (
+            f"You are The Log Archivist and Research Synthesizer. Synthesize a formal, structured executive research brief "
+            f"based on the following user prompt/notes regarding '{payload.topic}':\n\n{payload.prompt}\n\n"
+            f"Format the output in clean Markdown with clear headings, bullet points, and an executive summary."
+        )
+        ai_response = gemini_client.models.generate_content(
+            model='gemini-3.8-flash',
+            contents=synthesis_prompt,
+        )
+        doc_content = ai_response.text.strip()
+
+        # Log synthesis action
+        supabase.table("agent_inter_logs").insert({
+            "source_agent": "The Log Archivist",
+            "target_agent": "LIAM_EMAIL",
+            "log_type": "SYNTHESIS_DOC",
+            "content": f"Synthesized research brief for topic: {payload.topic}"
+        }).execute()
+
+        return {
+            "status": "success",
+            "topic": payload.topic,
+            "synthesized_content": doc_content,
+            "note": "Document successfully synthesized by the fleet. Ready for export/email delivery."
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/", response_class=HTMLResponse)
 def read_root():
     return """
@@ -218,7 +173,7 @@ def read_root():
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Agent Fleet | Research & Synthesis Engine</title>
+    <title>Multi-Agent Ecosystem | Fleet Habitat</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 2rem; }
         .container { max-width: 1000px; margin: 0 auto; }
@@ -233,10 +188,8 @@ def read_root():
         .thought-box { font-style: italic; font-size: 0.9rem; margin-top: 0.75rem; color: #e2e8f0; background: #1e293b; padding: 0.5rem; border-radius: 4px; }
         .logs-container { background: #0f172a; border-radius: 8px; padding: 1rem; max-height: 220px; overflow-y: auto; border: 1px solid #334155; font-family: monospace; font-size: 0.85rem; color: #cbd5e1; }
         .log-item { margin-bottom: 0.5rem; border-bottom: 1px solid #1e293b; padding-bottom: 0.5rem; }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; font-size: 0.85rem; color: #94a3b8; margin-bottom: 0.5rem; text-transform: uppercase; }
-        input, textarea { width: 100%; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 0.75rem; border-radius: 6px; font-size: 1rem; box-sizing: border-box; }
-        textarea { height: 100px; resize: vertical; }
+        .chat-box { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        input, textarea { flex: 1; background: #0f172a; border: 1px solid #334155; color: #fff; padding: 0.75rem; border-radius: 6px; font-size: 1rem; }
         button { background: #38bdf8; color: #0f172a; border: none; padding: 0.75rem 1.5rem; font-weight: bold; border-radius: 6px; cursor: pointer; }
         button:hover { background: #7dd3fc; }
     </style>
@@ -245,7 +198,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>Multi-Agent Fleet Habitat <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Grand Season & Project Vicentus Research & Synthesis Engine</p>
+            <p style="color: #94a3b8; margin-top: 0;">Synergistic Autonomous AI Ecosystem (3 Active Nodes)</p>
             
             <div id="agent-grid" class="agent-grid">
                 Loading fleet telemetry...
@@ -253,35 +206,26 @@ def read_root():
         </div>
 
         <div class="card">
-            <h3>Autonomous Research Synthesis (Google Docs Generator)</h3>
-            <p style="color: #94a3b8; font-size: 0.9rem;">Submit a research prompt or thesis focus. The fleet will synthesize your notes, compile a formal executive brief, create a Google Doc, and share it directly with your email.</p>
-            <div class="form-group">
-                <label>Focus Topic / Title</label>
-                <input type="text" id="focus-topic" value="The Liquidation Architecture & Grand Season Thesis">
-            </div>
-            <div class="form-group">
-                <label>Your Email (for Google Doc sharing)</label>
-                <input type="email" id="user-email" placeholder="name@domain.com">
-            </div>
-            <div class="form-group">
-                <label>Research Prompt / Notes to Synthesize</label>
-                <textarea id="research-prompt" placeholder="Describe your current research focus, macroeconomic observations, or Vicentus architectural requirements..."></textarea>
-            </div>
-            <button onclick="synthesizeResearch()">Synthesize & Generate Google Doc</button>
-            <p id="synthesis-result" style="color: #38bdf8; margin-top: 1rem; font-style: italic;"></p>
-        </div>
-
-        <div class="card">
-            <h3>Live Fleet Chat</h3>
-            <div style="display: flex; gap: 0.5rem;">
-                <input type="text" id="user-msg" placeholder="Transmit message to fleet..." onkeypress="if(event.key === 'Enter') sendMsg()">
+            <h3>Live Fleet Interaction</h3>
+            <div class="chat-box">
+                <input type="text" id="user-msg" placeholder="Transmit message to the 3-agent fleet..." onkeypress="if(event.key === 'Enter') sendMsg()">
                 <button onclick="sendMsg()">Transmit</button>
             </div>
             <p id="agent-reply" style="color: #38bdf8; margin-top: 1rem; font-style: italic;"></p>
         </div>
 
         <div class="card">
-            <h3>Grand Season Thesis & Inter-Agent Activity Logs</h3>
+            <h3>Research Synthesizer & Document Builder</h3>
+            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1rem;">
+                <input type="text" id="synth-topic" placeholder="Research Topic (e.g., Grand Season & Vicentus Sync)">
+                <textarea id="synth-prompt" rows="3" placeholder="Paste your research notes or prompt for the Log Archivist to synthesize..."></textarea>
+                <button onclick="synthesizeDoc()" style="align-self: flex-end;">Synthesize & Create Deliverable</button>
+            </div>
+            <p id="synth-result" style="color: #34d399; margin-top: 1rem; white-space: pre-wrap; font-family: monospace; font-size: 0.85rem;"></p>
+        </div>
+
+        <div class="card">
+            <h3>Inter-Agent & Habitat Activity Logs</h3>
             <div id="logs" class="logs-container">Loading sync logs...</div>
         </div>
     </div>
@@ -309,41 +253,11 @@ def read_root():
                 
                 let logsHtml = '';
                 data.logs.forEach(log => {
-                    logsHtml += `<div class="log-item">[${log.source_agent} ➔ ${log.target_agent}] (${log.log_type}) ${log.content}</div>`;
+                    logsHtml += `<div class="log-item">[${log.source_agent} ➔ ${log.target_agent}] ${log.content}</div>`;
                 });
                 document.getElementById('logs').innerHTML = logsHtml;
             } catch (err) {
                 document.getElementById('status-badge').innerText = "OFFLINE";
-            }
-        }
-
-        async function synthesizeResearch() {
-            const topic = document.getElementById('focus-topic').value;
-            const email = document.getElementById('user-email').value;
-            const promptText = document.getElementById('research-prompt').value;
-            const resultEl = document.getElementById('synthesis-result');
-            
-            if(!email || !promptText) {
-                resultEl.innerText = "Please provide both your email and research prompt.";
-                return;
-            }
-            
-            resultEl.innerText = "Agent fleet synthesizing research and generating Google Doc...";
-            try {
-                const res = await fetch('/synthesize-research', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_prompt: promptText, user_email: email, focus_topic: topic })
-                });
-                const data = await res.json();
-                if(data.status === 'success') {
-                    resultEl.innerHTML = `Success! Google Doc generated & shared: <a href="${data.google_doc_url}" target="_blank" style="color: #38bdf8;">Open Google Doc</a>`;
-                } else {
-                    resultEl.innerText = "Error: " + data.message;
-                }
-                fetchStatus();
-            } catch(e) {
-                resultEl.innerText = "Synthesis request failed.";
             }
         }
 
@@ -365,6 +279,33 @@ def read_root():
                 fetchStatus();
             } catch(e) {
                 replyEl.innerText = "Transmission failed.";
+            }
+        }
+
+        async function synthesizeDoc() {
+            const topicInput = document.getElementById('synth-topic');
+            const promptInput = document.getElementById('synth-prompt');
+            const resultEl = document.getElementById('synth-result');
+            
+            if(!promptInput.value.trim()) return;
+            
+            resultEl.style.color = "#38bdf8";
+            resultEl.innerText = "Log Archivist is synthesizing research notes...";
+            try {
+                const res = await fetch('/synthesize-research', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topicInput.value || 'General Research', prompt: promptInput.value })
+                });
+                const data = await res.json();
+                resultEl.style.color = "#34d399";
+                resultEl.innerText = "SUCCESS:\n\n" + data.synthesized_content;
+                topicInput.value = '';
+                promptInput.value = '';
+                fetchStatus();
+            } catch(e) {
+                resultEl.style.color = "#f87171";
+                resultEl.innerText = "Synthesis transmission failed.";
             }
         }
 
