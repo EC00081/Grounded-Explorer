@@ -33,17 +33,6 @@ async def fetch_external_telemetry() -> str:
         pass
     return "External Telemetry Feed: Nominal"
 
-def get_embedding(text: str):
-    try:
-        response = gemini_client.models.embed_content(
-            model="text-embedding-004",
-            contents=text
-        )
-        return response.embedding.values
-    except Exception as e:
-        print(f"Embedding error: {e}")
-        return None
-
 async def world_engine_loop():
     while True:
         try:
@@ -93,16 +82,9 @@ async def world_engine_loop():
                     "log_type": "DIARY",
                     "content": log_content
                 }).execute()
-
-                vector = get_embedding(log_content)
-                if vector:
-                    supabase.table("agent_vector_memory").insert({
-                        "content": log_content,
-                        "embedding": vector
-                    }).execute()
                 
         except Exception as e:
-            print(f"Error in advanced world engine loop: {e}")
+            print(f"Error in world engine loop: {e}")
             
         await asyncio.sleep(45)
 
@@ -139,13 +121,6 @@ def interact_with_agent(payload: UserMessage):
         "log_type": "USER_INTERACTION",
         "content": interaction_text
     }).execute()
-
-    vector = get_embedding(interaction_text)
-    if vector:
-        supabase.table("agent_vector_memory").insert({
-            "content": interaction_text,
-            "embedding": vector
-        }).execute()
     
     return {"reply": reply}
 
@@ -181,7 +156,7 @@ def read_root():
     <div class="container">
         <div class="card">
             <h1>The Grounded Explorer <span id="status-badge" class="status-badge">ONLINE</span></h1>
-            <p style="color: #94a3b8; margin-top: 0;">Vector-Enabled Autonomous AI World Habitat</p>
+            <p style="color: #94a3b8; margin-top: 0;">Autonomous AI World Habitat</p>
             
             <div id="current-thought" class="current-thought">Connecting to neural core...</div>
             
@@ -211,7 +186,7 @@ def read_root():
         </div>
 
         <div class="card">
-            <h3>Vector Memory & Activity Logs</h3>
+            <h3>Habitat Activity Logs</h3>
             <div id="logs" class="logs-container">Loading logs...</div>
         </div>
     </div>
